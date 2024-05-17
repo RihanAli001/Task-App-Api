@@ -8,7 +8,7 @@ const createToken = (userId: any): string => {
     }
 
     const token: string = jwt.sign({ id: userId }, secretKey, {
-      expiresIn: "1h",
+      expiresIn: "12h",
     });
     return token;
   } catch (err) {

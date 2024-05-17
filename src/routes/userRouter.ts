@@ -5,7 +5,7 @@ import { loginSchema, regSchema } from "../utils/joi-validation";
 
 const userRoute = express.Router();
 
-userRoute.use("/register", validate(regSchema), register);
-userRoute.use("/login", validate(loginSchema), login);
+userRoute.post("/register", validate(regSchema), register);
+userRoute.post("/login", validate(loginSchema), login);
 
 export { userRoute };

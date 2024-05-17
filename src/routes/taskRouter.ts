@@ -2,7 +2,7 @@ import express from "express";
 import {
   createTask,
   deleteTask,
-  tasks,
+  taskById,
   updateTask,
 } from "../controllers/taskController";
 import { validate } from "express-validation";
@@ -11,11 +11,11 @@ import authenticate from "../middlewares/auth";
 
 const taskRoute = express.Router();
 
-taskRoute.use(authenticate)
+taskRoute.use(authenticate);
 
-taskRoute.use("/add", validate(createTaskSchema), createTask);
-taskRoute.use("/update", validate(updateTaskSchema), updateTask);
-taskRoute.use("/delete/:id", deleteTask);
-taskRoute.use("/", tasks);
+taskRoute.get("/:id", taskById);
+taskRoute.post("/", validate(createTaskSchema), createTask);
+taskRoute.put("/:id", validate(updateTaskSchema), updateTask);
+taskRoute.delete("/:id", deleteTask);
 
 export { taskRoute };

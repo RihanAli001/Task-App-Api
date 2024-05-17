@@ -6,6 +6,14 @@ import { createToken } from "../utils/token";
 const register = async (req: Request, res: Response, next: NextFunction) => {
   const { username, email, password } = <User>req.body;
   try {
+    const conditionSql = `SELECT * FROM users WHERE username = $1 OR email = $2`;
+    const conditionResult = await pool.query(conditionSql, [username, email]);
+    if (conditionResult.rows?.length > 0) {
+      res
+        .status(200)
+        .send({ msg: "Username or email already exist", data: null });
+      return;
+    }
     const sql = `INSERT INTO users(username, password, email) VALUES ($1,$2,$3) returning *`;
     const result = await pool.query(sql, [username, password, email]);
     res.status(200).send({ msg: "User has been register", data: result.rows });
