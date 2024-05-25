@@ -17,12 +17,6 @@ export const loginSchema = {
 
 export const createTaskSchema = {
   body: Joi.object({
-    taskDescription: Joi.string().required(),
-  }),
-};
-
-export const createTasksSchema = {
-  body: Joi.object({
     tasks: Joi.array()
       .items(
         Joi.object({
@@ -36,6 +30,7 @@ export const createTasksSchema = {
 
 export const updateTaskSchema = {
   body: Joi.object({
+    id: Joi.number().required(),
     taskDescription: Joi.string(),
     taskComplete: Joi.boolean(),
   }).or("taskDescription", "taskComplete"),

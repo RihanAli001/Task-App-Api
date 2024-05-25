@@ -1,90 +1,119 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { pool } from "../database/config/connection";
 import { Task } from "../models/task.model";
 
-const taskById = async (req: Request, res: Response) => {
+const allTasks = async (req: Request, res: Response,next: NextFunction) => {
   console.log("Get todos");
   try {
     const { id } = req.params;
-    const userId: number = req.userId;
-    const sql: string = `SELECT task_id, task_description, task_complete FROM tasks WHERE user_id = $1 AND task_id = $2 AND archive_at IS NULL`;
-    const result = await pool.query(sql, [userId, id]);
-
-    res
-      .status(200)
-      .json({ msg: "Tasks retrieved successfully", data: result.rows });
-  } catch (error) {
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
-
-const createTask = async (req: Request, res: Response) => {
-  console.log("Add todo");
-  try {
-    const { taskDescription } = <Task>req.body;
-    if (!taskDescription) {
-      res.send({ msg: "Description should not be empty" });
+    if (id !== undefined && Number.isNaN(+id)) {
+      res.status(400).json({ msg: "Invalid Task Id", data: null });
       return;
     }
+    const completed: string | undefined = req.query.completed?.toString();
     const userId: number = req.userId;
-    const sql = `INSERT INTO tasks(user_id, task_description) VALUES ($1, $2) returning task_id, task_description, task_complete`;
-    const result = await pool.query(sql, [userId, taskDescription]);
-    res
-      .status(200)
-      .json({ msg: "Task created successfully", data: result.rows });
-  } catch (error) {
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
 
-const updateTask = async (req: Request, res: Response) => {
-  console.log("Update todo");
-  try {
-    const id = +req.params.id;
-    if (Number.isNaN(id)) {
-      res.status(200).json({ msg: "Invalid task id", data: null });
-      return;
-    }
-    const { taskDescription, taskComplete } = (<Task>req.body) as Task;
+    let sql: string = `SELECT task_id, task_description, task_complete FROM tasks WHERE user_id = ${userId} AND archive_at IS NULL ${ id ? ` AND task_id = ${id}` : "" } ${completed ? ` AND task_complete = ${completed}::BOOLEAN` : ""}`;
 
-    const sql = `UPDATE tasks 
-                  SET task_description = CASE WHEN $1::TEXT IS NOT NULL THEN $1::TEXT ELSE task_description END,
-                  task_complete = CASE WHEN $2::BOOLEAN IS NOT NULL THEN $2::BOOLEAN ELSE task_complete END
-                  WHERE task_id = $3
-                  RETURNING task_id, task_description, task_complete`;
+    let result = await pool.query(sql);
 
-    const result = await pool.query(sql, [taskDescription, taskComplete, id]);
     if (result.rowCount) {
       res
         .status(200)
-        .json({ msg: "Task updated successfully", data: result.rows });
+        .json({ msg: "Tasks retrieved successfully", data: result.rows });
+    } else {
+      res.status(200).json({ msg: "No task found", data: result.rows });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+const createTask = async (req: Request, res: Response, next: NextFunction) => {
+  console.log("Add todo");
+  try {
+    const tasks: Task[] = req.body.tasks;
+    const userId: number = +req.userId;
+
+    const placeholders: string = tasks
+      .map(
+        (task) =>
+          `(${userId}::INTEGER,
+          '${task.taskDescription}'::TEXT,
+        ${task.taskComplete}::BOOLEAN)`
+      )
+      .join(",");
+
+    const sql: string = `INSERT INTO tasks(user_id, task_description, task_complete) VALUES ${placeholders} RETURNING task_id, task_description, task_complete;`;
+
+
+    const result = await pool.query(sql);
+    if(result.rowCount) {
+      res
+        .status(200)
+        .json({ msg: "Task created successfully", data: result.rows });
+    } else {
+      res
+        .status(400)
+        .json({ msg: "Task does not created", data: result.rows });
+
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateTask = async (req: Request, res: Response,next: NextFunction) => {
+  console.log("Update todo");
+  try {
+    const tasks: Task[] = req.body?.id ? [req.body] : req.body.tasks;
+    const placeholders = tasks
+      .map((task: Task) => {
+        return `(${task?.taskDescription ? `'${task?.taskDescription}'` : null},
+            ${task?.taskComplete ?? null},
+            ${task?.id})`;
+      })
+      .join(",");
+
+    const sql = `UPDATE tasks AS t SET task_description = CASE WHEN u.task_description IS NOT NULL THEN u task_description::TEXT ELSE t.task_description END, task_complete = CASE WHEN u.task_complete::BOOLEAN IS NOT NULL THEN u.task_complete::BOOLEAN ELSE t.task_complete END FROM (VALUES ${placeholders}) AS u(task_description, task_complete, task_id) WHERE t.task_id = u.task_id AND archive_at IS NULL RETURNING t.task_id, t.task_description, t.task_complete`;
+
+    const result = await pool.query(sql);
+    if (result.rowCount) {
+      res
+        .status(200)
+        .json({ msg: "Tasks updated successfully", data: result.rows });
     } else {
       res.status(200).json({ msg: "No task updated", data: result.rows });
     }
   } catch (error) {
-    res.status(500).json({ error: "Internal server error", errorMsg: error });
+    next(error);
   }
 };
 
-const deleteTask = async (req: Request, res: Response) => {
-  console.log("Delete todo");
+const removeTask = async (req: Request, res: Response,next: NextFunction) => {
+  console.log("Remove todo");
   try {
-    const { id } = req.params;
-    const currentDateAndTime = new Date();
-    const sql = `UPDATE tasks SET archive_at = $1 WHERE task_id=$2 AND archive_at IS NULL returning task_id, task_description, task_complete`;
-    const result = await pool.query(sql, [currentDateAndTime, id]);
+    if ( Number.isNaN(+req.params?.id) && !req.body?.ids ) {
+      res.status(400).json({ msg: "Invalid task id", data: null });
+      return;
+    }
+    const taskIds = req?.params?.id
+      ? [req.params?.id]
+      : (req.body?.ids as number[]);
+
+    const sql = `UPDATE tasks SET archive_at = $1 WHERE task_id IN (${taskIds.join(',')}) AND archive_at IS NULL RETURNING task_id, task_description, task_complete`;
+
+    const result = await pool.query(sql, [new Date()]);
     if (result.rowCount) {
       res
         .status(200)
-        .json({ msg: "Task removed successfully", data: result.rows });
+        .json({ msg: "Tasks removed successfully", data: result.rows });
     } else {
-      res
-        .status(200)
-        .json({ msg: "No task found to remove", data: result.rows });
+      res.status(200).json({ msg: "No task remove", data: result.rows });
     }
   } catch (error) {
-    res.status(500).json({ error: "Internal server error" });
+    next(error);
   }
 };
 
-export { taskById, createTask, updateTask, deleteTask };
+export { allTasks, createTask, updateTask, removeTask };

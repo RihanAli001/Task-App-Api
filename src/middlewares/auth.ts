@@ -7,7 +7,7 @@ const authenticate = async (
   res: Response,
   next: NextFunction
 ) => {
-  const tokenHeader = req.header("Authorization");
+  const tokenHeader: string | undefined = req.header("Authorization");
 
   if (!tokenHeader || !tokenHeader.startsWith("Bearer ")) {
     return res.status(400).json({
@@ -16,7 +16,7 @@ const authenticate = async (
   }
 
   try {
-    const token = tokenHeader.split(" ")[1];
+    const token: string = tokenHeader.split(" ")[1];
     if (token) {
       const decoded: any = jwt.verify(token, secretKey);
       req.userId = decoded?.id;
